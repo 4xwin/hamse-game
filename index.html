@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="ml">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#87CEEB">
+<title>HAMSE 😂</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#87CEEB; font-family:'Noto Sans Malayalam','Manjari','Rachana','Meera','Arial Unicode MS',sans-serif; touch-action:none; overscroll-behavior:none; }
+  #gameContainer { position:relative; width:100vw; height:100vh; overflow:hidden; touch-action:none; }
+  #gameCanvas { display:block; width:100%; height:100%; touch-action:none; }
+  .screen { position:absolute; top:0; left:0; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:10; padding:20px; text-align:center; }
+  #startScreen { background:linear-gradient(180deg,#FFD54F 0%,#FF8A65 100%); }
+  #gameOverScreen { background:rgba(0,0,0,.75); color:white; display:none; }
+  .title { font-size:clamp(48px,15vw,96px); font-weight:900; color:#D32F2F; text-shadow:4px 4px 0 #FFF,8px 8px 0 rgba(0,0,0,.2); margin-bottom:10px; animation:bounce 1.5s ease-in-out infinite; }
+  @keyframes bounce { 0%,100%{transform:translateY(0) rotate(-2deg)} 50%{transform:translateY(-15px) rotate(2deg)} }
+  .subtitle { font-size:clamp(20px,5vw,32px); color:#3E2723; font-weight:700; margin:10px 0; text-shadow:2px 2px 0 rgba(255,255,255,.5); }
+  .subtitle2 { font-size:clamp(16px,4vw,24px); color:#4E342E; margin-bottom:30px; font-weight:600; }
+  .game-btn { font-family:inherit; font-size:clamp(20px,5vw,28px); font-weight:800; padding:18px 40px; border:none; border-radius:50px; background:linear-gradient(180deg,#4CAF50 0%,#2E7D32 100%); color:white; cursor:pointer; box-shadow:0 6px 0 #1B5E20,0 8px 20px rgba(0,0,0,.3); transition:transform .1s,box-shadow .1s; touch-action:manipulation; min-width:240px; letter-spacing:1px; }
+  .game-btn:active { transform:translateY(4px); box-shadow:0 2px 0 #1B5E20,0 4px 10px rgba(0,0,0,.3); }
+  .game-btn.restart { background:linear-gradient(180deg,#FF9800 0%,#E65100 100%); box-shadow:0 6px 0 #BF360C,0 8px 20px rgba(0,0,0,.3); }
+  .game-btn.restart:active { box-shadow:0 2px 0 #BF360C,0 4px 10px rgba(0,0,0,.3); }
+  .go-title { font-size:clamp(32px,8vw,56px); font-weight:900; color:#FF5252; text-shadow:3px 3px 0 #000; margin-bottom:20px; animation:shake .5s ease-in-out; }
+  @keyframes shake { 0%,100%{transform:translateX(0) rotate(0)} 25%{transform:translateX(-10px) rotate(-5deg)} 75%{transform:translateX(10px) rotate(5deg)} }
+  .go-score { font-size:clamp(24px,6vw,36px); font-weight:700; margin-bottom:30px; color:#FFD54F; text-shadow:2px 2px 0 #000; }
+  #hud { position:absolute; top:15px; left:15px; right:15px; z-index:5; display:none; justify-content:space-between; align-items:flex-start; pointer-events:none; font-weight:800; }
+  #scoreDisplay { background:rgba(255,255,255,.9); padding:10px 18px; border-radius:30px; font-size:clamp(18px,4.5vw,26px); color:#D32F2F; box-shadow:0 4px 10px rgba(0,0,0,.2); border:3px solid #D32F2F; }
+  #milestone { background:rgba(255,87,34,.95); color:white; padding:8px 16px; border-radius:20px; font-size:clamp(14px,3.5vw,20px); font-weight:700; opacity:0; transform:scale(.5); transition:opacity .3s,transform .3s; box-shadow:0 4px 10px rgba(0,0,0,.3); }
+  #milestone.show { opacity:1; transform:scale(1); }
+  .emoji-big { font-size:clamp(60px,18vw,120px); margin:10px 0; animation:wiggle 2s ease-in-out infinite; }
+  @keyframes wiggle { 0%,100%{transform:rotate(-10deg)} 50%{transform:rotate(10deg)} }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="gameCanvas"></canvas>
+  <div id="hud"><div id="scoreDisplay">സ്കോർ: 0</div><div id="milestone"></div></div>
+
+  <div id="startScreen" class="screen">
+    <div class="title">HAMSE 😂</div>
+    <div class="emoji-big">🏃‍♂️</div>
+    <div class="subtitle">ഹംസേ രക്ഷപ്പെടുമോ?</div>
+    <div class="subtitle2">തട്ടി ചാടിക്കൂ!</div>
+    <button type="button" id="startButton" class="game-btn">കളി തുടങ്ങാം 🔥</button>
+  </div>
+
+  <div id="gameOverScreen" class="screen">
+    <div class="go-title">ഹംസേ വീണു 💀😭</div>
+    <div class="go-score" id="finalScore">സ്കോർ: 0</div>
+    <button type="button" id="restartButton" class="game-btn restart">വീണ്ടും കളിക്കാം 🔄</button>
+  </div>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+/* ================= MALAYALAM SPEECH ONLY =================
+   No beep, oscillator, or generic SFX is used.
+   The game asks the browser's native speech engine to speak Malayalam.
+*/
+let voicesCache = [];
+let mlVoice = null;
+let speechAvailable = 'speechSynthesis' in window;
+let speechUnlocked = false;
+
+function refreshVoices() {
+  if (!speechAvailable) return;
+  voicesCache = window.speechSynthesis.getVoices() || [];
+  mlVoice =
+    voicesCache.find(v => /^ml(-|_)?/i.test(v.lang || '')) ||
+    voicesCache.find(v => /malayalam/i.test(v.name || '')) ||
+    null;
+}
+
+if (speechAvailable) {
+  refreshVoices();
+  window.speechSynthesis.addEventListener('voiceschanged', refreshVoices);
+}
+
+function cleanMalayalam(text) {
+  return String(text || '')
+    .replace(/[\u{1F000}-\u{1FFFF}]/gu, '')
+    .replace(/[\u{2600}-\u{27BF}]/gu, '')
+    .replace(/!{2,}/g, '!')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/* Speak exactly the supplied Malayalam phrase.
+   We deliberately do NOT cancel every previous utterance, because doing
+   that repeatedly on Android can cause short utterances to never start.
+*/
+function speakMalayalam(text) {
+  if (!speechAvailable) return false;
+
+  const spoken = cleanMalayalam(text);
+  if (!spoken) return false;
+
+  try {
+    refreshVoices();
+
+    const utter = new SpeechSynthesisUtterance(spoken);
+    utter.lang = 'ml-IN';
+    utter.rate = 0.88;
+    utter.pitch = 1.08;
+    utter.volume = 1;
+
+    if (mlVoice) utter.voice = mlVoice;
+
+    window.speechSynthesis.resume();
+    window.speechSynthesis.speak(utter);
+    speechUnlocked = true;
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/* Called from the real Start/Restart user gesture.
+   Some mobile browsers require speechSynthesis to be touched from a user
+   gesture before later speech can play.
+*/
+function unlockMalayalamSpeech() {
+  if (!speechAvailable) return;
+  try {
+    refreshVoices();
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
+
+    const warm = new SpeechSynthesisUtterance('ഹംസേ');
+    warm.lang = 'ml-IN';
+    warm.volume = 0.01;
+    warm.rate = 0.9;
+    if (mlVoice) warm.voice = mlVoice;
+
+    window.speechSynthesis.speak(warm);
+    speechUnlocked = true;
+  } catch (e) {}
+}
+
+/* Stop queued speech when a new game begins, but don't use this during
+   normal jumps. */
+function stopMalayalamSpeech() {
+  if (!speechAvailable) return;
+  try { window.speechSynthesis.cancel(); } catch (e) {}
+}
+
+/* ================= STATE ================= */
+const STATE = { START:0, PLAYING:1, GAME_OVER:2 };
+let gameState = STATE.START;
+
+/* ================= DOM ================= */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const startScreen = document.getElementById('startScreen');
+const gameOverScreen = document.getElementById('gameOverScreen');
+const hud = document.getElementById('hud');
+const scoreDisplay = document.getElementById('scoreDisplay');
+const milestoneEl = document.getElementById('milestone');
+const finalScoreEl = document.getElementById('finalScore');
+const startButton = document.getElementById('startButton');
+const restartButton = document.getElementById('restartButton');
+
+/* ================= GAME VARS ================= */
+let W=0,H=0,GROUND_Y=0;
+let dpr=Math.min(window.devicePixelRatio||1,2);
+const GRAVITY=.75, JUMP_VEL=-14.5;
+
+let hamse={x:80,y:0,vy:0,w:60,h:80,onGround:true,runFrame:0,expression:'normal',faceTimer:0};
+let obstacles=[],particles=[],reactions=[],clouds=[],bgElements=[];
+let groundOffset=0,bgOffset=0,farBgOffset=0;
+let score=0,gameSpeed=6,baseSpeed=6,lastObstacleTime=0,nextObstacleDelay=1500,lastMilestone=0,milestoneTimer=0,shakeTimer=0,shakeIntensity=0,lastTime=0,animFrameId=null,gameTime=0;
+
+const reactions_pool=["ഹംസേയ്!!!","എടാ ഹംസേ!","അയ്യോ ഹംസേ!","ഹംസേ പതുക്കെ!","എവിടേക്കാടാ?!","ഹംസേ ഓടെടാ!","അയ്യയ്യോ!"];
+const crashLines_pool=["അയ്യോ ഹംസേ!","ഹംസേ തീർന്നു!","എടാ ഹംസേ!","ഹംസേ പോയി!"];
+const milestones={5:"ഹംസേ തുടങ്ങി 🔥",10:"ഇവൻ സീരിയസ് ആണല്ലോ 💀",20:"ഹംസേ നിയന്ത്രണം വിട്ടു 😭",30:"ഇവനെ ആരെങ്കിലും പിടിക്കൂ 😂",50:"ഹംസേ FINAL BOSS 🔥💀"};
+const obstacleTypes=[
+ {type:'tea',w:45,h:70},{type:'slipper',w:65,h:30},{type:'chair',w:55,h:75},
+ {type:'noentry',w:50,h:90},{type:'nillu',w:70,h:90},{type:'poda',w:60,h:85},{type:'wall',w:80,h:80}
+];
+
+function resize(){
+  W=window.innerWidth; H=window.innerHeight;
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  canvas.style.width=W+'px'; canvas.style.height=H+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  GROUND_Y=H*.78;
+  hamse.x=Math.max(60,W*.12);
+  if(gameState===STATE.START) hamse.y=GROUND_Y-hamse.h;
+}
+window.addEventListener('resize',resize);
+
+function initBackground(){
+  clouds=[];
+  for(let i=0;i<5;i++) clouds.push({x:Math.random()*W,y:30+Math.random()*(H*.25),size:20+Math.random()*30,speed:.3+Math.random()*.3});
+  bgElements=[];
+  for(let i=0;i<8;i++) bgElements.push({x:Math.random()*W*2,type:Math.random()<.5?'tree':(Math.random()<.5?'house':'auto'),scale:.7+Math.random()*.6});
+}
+
+function drawSky(){
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'#87CEEB'); grad.addColorStop(.6,'#B3E5FC'); grad.addColorStop(1,'#FFE0B2');
+  ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='rgba(255,235,59,.4)'; ctx.beginPath(); ctx.arc(W-80,80,50,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='rgba(255,241,118,.7)'; ctx.beginPath(); ctx.arc(W-80,80,35,0,Math.PI*2); ctx.fill();
+}
+function drawClouds(){
+  ctx.fillStyle='rgba(255,255,255,.9)';
+  for(const c of clouds){
+    ctx.beginPath(); ctx.arc(c.x,c.y,c.size,0,Math.PI*2); ctx.arc(c.x+c.size*.7,c.y+5,c.size*.8,0,Math.PI*2);
+    ctx.arc(c.x-c.size*.7,c.y+5,c.size*.7,0,Math.PI*2); ctx.arc(c.x+c.size*.3,c.y-c.size*.4,c.size*.6,0,Math.PI*2); ctx.fill();
+  }
+}
+function drawFarHills(){
+  ctx.fillStyle='#81C784'; ctx.beginPath(); ctx.moveTo(0,GROUND_Y);
+  for(let x=0;x<=W;x+=40){const offset=(x+farBgOffset*.3)*.01; const y=GROUND_Y-40-Math.sin(offset)*20-Math.cos(offset*1.5)*15; ctx.lineTo(x,y);}
+  ctx.lineTo(W,GROUND_Y); ctx.closePath(); ctx.fill();
+}
+function drawTree(x,y,scale){
+  ctx.save(); ctx.translate(x,y); ctx.scale(scale,scale);
+  ctx.fillStyle='#6D4C41'; ctx.fillRect(-4,-60,8,60); ctx.strokeStyle='#6D4C41'; ctx.lineWidth=6;
+  ctx.beginPath(); ctx.moveTo(0,-60); ctx.quadraticCurveTo(10,-75,15,-85); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,-60); ctx.quadraticCurveTo(-10,-75,-15,-85); ctx.stroke();
+  ctx.fillStyle='#2E7D32';
+  for(let i=0;i<6;i++){const a=(i/6)*Math.PI*2; ctx.beginPath(); ctx.ellipse(Math.cos(a)*18,-85+Math.sin(a)*10,15,8,a,0,Math.PI*2); ctx.fill();}
+  ctx.fillStyle='#5D4037'; ctx.beginPath();ctx.arc(5,-75,4,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(-5,-73,4,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(0,-70,4,0,Math.PI*2);ctx.fill();ctx.restore();
+}
+function drawHouse(x,y,scale){
+  ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);ctx.fillStyle='#FFCC80';ctx.fillRect(-30,-40,60,40);ctx.fillStyle='#C62828';
+  ctx.beginPath();ctx.moveTo(-35,-40);ctx.lineTo(0,-65);ctx.lineTo(35,-40);ctx.closePath();ctx.fill();ctx.fillStyle='#5D4037';ctx.fillRect(-8,-25,16,25);
+  ctx.fillStyle='#81D4FA';ctx.fillRect(12,-32,12,12);ctx.strokeStyle='#5D4037';ctx.lineWidth=1;ctx.strokeRect(12,-32,12,12);ctx.restore();
+}
+function drawAuto(x,y,scale){
+  ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);ctx.fillStyle='#FBC02D';ctx.fillRect(-25,-30,50,25);ctx.fillStyle='#212121';ctx.fillRect(-22,-40,44,12);
+  ctx.fillStyle='#FBC02D';ctx.beginPath();ctx.moveTo(25,-30);ctx.lineTo(35,-20);ctx.lineTo(35,-5);ctx.lineTo(25,-5);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#212121';ctx.beginPath();ctx.arc(-15,0,6,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(20,0,6,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#81D4FA';ctx.fillRect(-18,-25,15,10);ctx.restore();
+}
+function drawBackgroundElements(){
+  for(const el of bgElements){const y=GROUND_Y;if(el.type==='tree')drawTree(el.x,y,el.scale);else if(el.type==='house')drawHouse(el.x,y-5,el.scale);else drawAuto(el.x,y-5,el.scale*.8);}
+}
+function drawGround(){
+  ctx.fillStyle='#424242';ctx.fillRect(0,GROUND_Y,W,H-GROUND_Y);ctx.fillStyle='#FFD54F';ctx.fillRect(0,GROUND_Y,W,4);ctx.fillStyle='#FFF';
+  const lineY=GROUND_Y+(H-GROUND_Y)*.5; for(let x=-groundOffset;x<W;x+=40)ctx.fillRect(x,lineY-2,20,4);
+  ctx.fillStyle='#795548';ctx.fillRect(0,H-20,W,20);
+}
+function drawHamse(){
+  const x=hamse.x,y=hamse.y,w=hamse.w,h=hamse.h;ctx.save();
+  ctx.fillStyle='rgba(0,0,0,.25)';const shadowScale=hamse.onGround?1:Math.max(.4,1-(GROUND_Y-(y+h))/200);
+  ctx.beginPath();ctx.ellipse(x+w/2,GROUND_Y+3,w*.5*shadowScale,5*shadowScale,0,0,Math.PI*2);ctx.fill();
+  const lean=hamse.onGround?Math.sin(hamse.runFrame*.3)*.05:-.15;ctx.translate(x+w/2,y+h);ctx.rotate(lean);ctx.translate(-(x+w/2),-(y+h));
+  const legSwing=hamse.onGround?Math.sin(hamse.runFrame*.4)*12:5;ctx.strokeStyle='#FFCC80';ctx.lineWidth=8;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(x+w/2-8,y+h-25);ctx.lineTo(x+w/2-8+legSwing*.5,y+h-5);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(x+w/2+8,y+h-25);ctx.lineTo(x+w/2+8-legSwing*.5,y+h-5);ctx.stroke();
+  ctx.fillStyle='#3E2723';ctx.beginPath();ctx.ellipse(x+w/2-8+legSwing*.5,y+h-3,7,3,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(x+w/2+8-legSwing*.5,y+h-3,7,3,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#FFF';ctx.beginPath();ctx.moveTo(x+5,y+h-35);ctx.lineTo(x+w-5,y+h-35);ctx.lineTo(x+w-3,y+h-20);ctx.lineTo(x+3,y+h-20);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#D32F2F';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#D32F2F';ctx.fillRect(x+3,y+h-22,w-6,3);
+  ctx.fillStyle='#4FC3F7';ctx.beginPath();ctx.moveTo(x+8,y+30);ctx.lineTo(x+w-8,y+30);ctx.lineTo(x+w-5,y+h-35);ctx.lineTo(x+5,y+h-35);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#0277BD';ctx.lineWidth=1.5;ctx.stroke();
+  const armSwing=hamse.onGround?Math.sin(hamse.runFrame*.4)*15:-10;ctx.strokeStyle='#FFCC80';ctx.lineWidth=7;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(x+10,y+35);ctx.lineTo(x+5-armSwing*.3,y+55);ctx.stroke();ctx.beginPath();ctx.moveTo(x+w-10,y+35);ctx.lineTo(x+w-5+armSwing*.3,y+55);ctx.stroke();
+  ctx.fillStyle='#FFCC80';ctx.beginPath();ctx.arc(x+w/2,y+18,18,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#8D6E63';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.fillStyle='#212121';ctx.beginPath();ctx.arc(x+w/2,y+12,18,Math.PI,Math.PI*2);ctx.fill();ctx.beginPath();ctx.moveTo(x+w/2-5,y+2);ctx.lineTo(x+w/2,y-3);ctx.lineTo(x+w/2+5,y+2);ctx.closePath();ctx.fill();
+  drawFace(x+w/2,y+18,hamse.expression);ctx.restore();
+}
+function drawFace(cx,cy,expr){
+  if(expr==='normal'){
+    ctx.fillStyle='#FFF';ctx.beginPath();ctx.arc(cx-6,cy-2,3.5,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(cx+6,cy-2,3.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#000';ctx.beginPath();ctx.arc(cx-5,cy-2,2,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(cx+7,cy-2,2,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#212121';ctx.beginPath();ctx.moveTo(cx-8,cy+4);ctx.quadraticCurveTo(cx-4,cy+2,cx,cy+5);ctx.quadraticCurveTo(cx+4,cy+2,cx+8,cy+4);ctx.quadraticCurveTo(cx+4,cy+6,cx,cy+7);ctx.quadraticCurveTo(cx-4,cy+6,cx-8,cy+4);ctx.fill();
+    ctx.strokeStyle='#5D4037';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx,cy+8,4,0,Math.PI);ctx.stroke();
+  }else if(expr==='jump'){
+    ctx.fillStyle='#FFF';ctx.beginPath();ctx.arc(cx-6,cy-2,4.5,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(cx+6,cy-2,4.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#000';ctx.beginPath();ctx.arc(cx-5,cy-2,2.5,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(cx+7,cy-2,2.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#212121';ctx.beginPath();ctx.moveTo(cx-8,cy+4);ctx.quadraticCurveTo(cx-4,cy+2,cx,cy+5);ctx.quadraticCurveTo(cx+4,cy+2,cx+8,cy+4);ctx.quadraticCurveTo(cx+4,cy+6,cx,cy+7);ctx.quadraticCurveTo(cx-4,cy+6,cx-8,cy+4);ctx.fill();
+    ctx.fillStyle='#5D4037';ctx.beginPath();ctx.ellipse(cx,cy+10,4,3,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#D32F2F';ctx.beginPath();ctx.ellipse(cx,cy+11,2,1.5,0,0,Math.PI*2);ctx.fill();
+  }else{
+    ctx.strokeStyle='#000';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(cx-8,cy-4);ctx.lineTo(cx-4,cy);ctx.moveTo(cx-4,cy-4);ctx.lineTo(cx-8,cy);ctx.moveTo(cx+4,cy-4);ctx.lineTo(cx+8,cy);ctx.moveTo(cx+8,cy-4);ctx.lineTo(cx+4,cy);ctx.stroke();
+    ctx.fillStyle='#212121';ctx.beginPath();ctx.moveTo(cx-8,cy+4);ctx.quadraticCurveTo(cx-4,cy+2,cx,cy+5);ctx.quadraticCurveTo(cx+4,cy+2,cx+8,cy+4);ctx.quadraticCurveTo(cx+4,cy+6,cx,cy+7);ctx.quadraticCurveTo(cx-4,cy+6,cx-8,cy+4);ctx.fill();
+    ctx.fillStyle='#5D4037';ctx.beginPath();ctx.ellipse(cx,cy+11,5,4,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#D32F2F';ctx.beginPath();ctx.ellipse(cx,cy+12,3,2,0,0,Math.PI*2);ctx.fill();
+  }
+}
+function drawObstacle(obs){
+  const x=obs.x,y=obs.y,w=obs.w,h=obs.h;ctx.save();ctx.fillStyle='rgba(0,0,0,.2)';ctx.beginPath();ctx.ellipse(x+w/2,GROUND_Y+3,w*.4,4,0,0,Math.PI*2);ctx.fill();
+  if(obs.type==='tea'){
+    ctx.fillStyle='#ECEFF1';ctx.beginPath();ctx.moveTo(x+5,y+10);ctx.lineTo(x+w-5,y+10);ctx.lineTo(x+w-8,y+h);ctx.lineTo(x+8,y+h);ctx.closePath();ctx.fill();ctx.strokeStyle='#546E7A';ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='#6D4C41';ctx.beginPath();ctx.moveTo(x+7,y+15);ctx.lineTo(x+w-7,y+15);ctx.lineTo(x+w-9,y+h-3);ctx.lineTo(x+9,y+h-3);ctx.closePath();ctx.fill();ctx.strokeStyle='#546E7A';ctx.lineWidth=3;ctx.beginPath();ctx.arc(x+w-3,y+h/2,8,-Math.PI/2,Math.PI/2);ctx.stroke();
+    ctx.strokeStyle='rgba(255,255,255,.7)';ctx.lineWidth=2;const t=gameTime*.005;for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(x+15+i*8,y+8);ctx.quadraticCurveTo(x+15+i*8+Math.sin(t+i)*3,y,x+15+i*8,y-8);ctx.stroke();}
+  }else if(obs.type==='slipper'){
+    ctx.fillStyle='#8D6E63';ctx.beginPath();ctx.ellipse(x+w/2,y+h/2,w/2,h/2,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#4E342E';ctx.lineWidth=2;ctx.stroke();ctx.strokeStyle='#3E2723';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x+10,y+h/2);ctx.lineTo(x+w/2,y+5);ctx.lineTo(x+w-10,y+h/2);ctx.stroke();ctx.beginPath();ctx.arc(x+w/2,y+5,5,0,Math.PI*2);ctx.fillStyle='#3E2723';ctx.fill();
+  }else if(obs.type==='chair'){
+    ctx.fillStyle='#A1887F';ctx.fillRect(x,y+15,w,8);ctx.fillRect(x,y,8,20);ctx.fillRect(x+w-8,y,8,20);ctx.fillRect(x,y,w,6);ctx.fillStyle='#6D4C41';ctx.fillRect(x+3,y+23,5,h-23);ctx.fillRect(x+w-8,y+23,5,h-23);ctx.fillRect(x+3,y+h-15,w-6,4);
+  }else if(obs.type==='noentry'){
+    ctx.fillStyle='#757575';ctx.fillRect(x+w/2-3,y+40,6,h-40);ctx.fillStyle='#D32F2F';ctx.beginPath();ctx.arc(x+w/2,y+22,22,0,Math.PI*2);ctx.fill();ctx.fillStyle='#FFF';ctx.fillRect(x+w/2-16,y+18,32,8);ctx.fillStyle='#424242';ctx.fillRect(x+w/2-10,y+h-5,20,5);
+  }else if(obs.type==='nillu'||obs.type==='poda'){
+    ctx.fillStyle='#795548';ctx.fillRect(x+w/2-3,y+35,6,h-35);ctx.fillStyle=obs.type==='nillu'?'#FFEB3B':'#FF5722';ctx.fillRect(x+5,y+5,w-10,35);ctx.strokeStyle='#000';ctx.lineWidth=2;ctx.strokeRect(x+5,y+5,w-10,35);
+    ctx.fillStyle=obs.type==='nillu'?'#000':'#FFF';ctx.font='bold 14px "Noto Sans Malayalam",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(obs.type==='nillu'?'നിൽക്കെടാ!':'പോടാ!',x+w/2,y+22);ctx.fillStyle='#424242';ctx.fillRect(x+w/2-10,y+h-5,20,5);
+  }else{
+    ctx.fillStyle='#BCAAA4';ctx.fillRect(x,y,w,h);ctx.strokeStyle='#6D4C41';ctx.lineWidth=2;ctx.strokeRect(x,y,w,h);ctx.strokeStyle='#8D6E63';ctx.lineWidth=1;
+    for(let row=0;row<4;row++){const yy=y+row*(h/4);ctx.beginPath();ctx.moveTo(x,yy);ctx.lineTo(x+w,yy);ctx.stroke();const off=row%2===0?0:w/4;for(let col=0;col<4;col++){const xx=x+off+col*(w/2);if(xx>x&&xx<x+w){ctx.beginPath();ctx.moveTo(xx,yy);ctx.lineTo(xx,yy+h/4);ctx.stroke();}}}
+    ctx.fillStyle='#D32F2F';ctx.font='bold 9px "Noto Sans Malayalam",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('ഹംസേ',x+w/2,y+h/2-8);ctx.fillText('തീർന്നു 💀',x+w/2,y+h/2+8);
+  }
+  ctx.restore();
+}
+function spawnObstacle(){const type=obstacleTypes[Math.floor(Math.random()*obstacleTypes.length)];obstacles.push({type:type.type,x:W+20,y:GROUND_Y-type.h,w:type.w,h:type.h,passed:false});}
+
+function spawnDust(x,y){for(let i=0;i<8;i++)particles.push({x:x+(Math.random()-.5)*20,y:y,vx:(Math.random()-.5)*3,vy:-Math.random()*3-1,life:1,size:3+Math.random()*4,color:'rgba(139,119,101,'});}
+function spawnCrashParticles(x,y){for(let i=0;i<20;i++)particles.push({x,y,vx:(Math.random()-.5)*8,vy:(Math.random()-.5)*8-3,life:1,size:4+Math.random()*5,color:Math.random()<.5?'rgba(255,87,34,':'rgba(255,193,7,'});}
+function updateParticles(dt){for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=.2;p.life-=.02;if(p.life<=0)particles.splice(i,1);}}
+function drawParticles(){for(const p of particles){ctx.fillStyle=p.color+p.life+')';ctx.beginPath();ctx.arc(p.x,p.y,p.size*p.life,0,Math.PI*2);ctx.fill();}}
+
+function spawnReaction(){
+  const text=reactions_pool[Math.floor(Math.random()*reactions_pool.length)];
+  reactions.push({x:hamse.x+hamse.w/2,y:hamse.y-10,text,life:1,vy:-1.5,rot:(Math.random()-.5)*.3,rotSpeed:(Math.random()-.5)*.05});
+  // Exact same Malayalam text is spoken.
+  speakMalayalam(text);
+}
+function updateReactions(){for(let i=reactions.length-1;i>=0;i--){const r=reactions[i];r.y+=r.vy;r.rot+=r.rotSpeed;r.life-=.018;if(r.life<=0)reactions.splice(i,1);}}
+function drawReactions(){
+  for(const r of reactions){ctx.save();ctx.translate(r.x,r.y);ctx.rotate(r.rot);ctx.globalAlpha=Math.max(0,r.life);ctx.font='bold 16px "Noto Sans Malayalam",sans-serif';
+    const tw=ctx.measureText(r.text).width+20,th=32;ctx.fillStyle='rgba(255,255,255,.95)';ctx.strokeStyle='#D32F2F';ctx.lineWidth=2;roundRect(ctx,-tw/2,-th/2,tw,th,15);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#D32F2F';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(r.text,0,0);ctx.restore();
+  }
+}
+function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();}
+
+function checkCollision(){
+  const hx=hamse.x+10,hy=hamse.y+10,hw=hamse.w-20,hh=hamse.h-15;
+  for(const obs of obstacles){const ox=obs.x+5,oy=obs.y+5,ow=obs.w-10,oh=obs.h-5;if(hx<ox+ow&&hx+hw>ox&&hy<oy+oh&&hy+hh>oy)return obs;}
+  return null;
+}
+
+/* ================= INPUT ================= */
+function jump(){
+  if(gameState!==STATE.PLAYING) return;
+  if(hamse.onGround){
+    hamse.vy=JUMP_VEL;
+    hamse.onGround=false;
+    hamse.expression='jump';
+    spawnReaction();       // visual Malayalam + actual Malayalam voice
+  }
+}
+function onGamePointerDown(e){if(gameState===STATE.PLAYING){e.preventDefault();jump();}}
+canvas.addEventListener('pointerdown',onGamePointerDown,{passive:false});
+canvas.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
+
+window.addEventListener('keydown',function(e){
+  if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();if(gameState===STATE.PLAYING)jump();else if(gameState===STATE.START)startGame();else if(gameState===STATE.GAME_OVER)startGame();}
+});
+
+/* ================= BUTTONS ================= */
+function handleStart(e){
+  e.preventDefault();
+  e.stopPropagation();
+  unlockMalayalamSpeech();
+  startGame();
+}
+function handleRestart(e){
+  e.preventDefault();
+  e.stopPropagation();
+  unlockMalayalamSpeech();
+  startGame();
+}
+startButton.addEventListener('pointerdown',handleStart,{passive:false});
+restartButton.addEventListener('pointerdown',handleRestart,{passive:false});
+
+/* ================= GAME FLOW ================= */
+function startGame(){
+  stopMalayalamSpeech();
+  gameState=STATE.PLAYING;
+  score=0;gameSpeed=baseSpeed;obstacles=[];particles=[];reactions=[];groundOffset=0;bgOffset=0;farBgOffset=0;
+  lastObstacleTime=0;nextObstacleDelay=1500;lastMilestone=0;milestoneTimer=0;shakeTimer=0;shakeIntensity=0;gameTime=0;
+  hamse.y=GROUND_Y-hamse.h;hamse.vy=0;hamse.onGround=true;hamse.expression='normal';hamse.runFrame=0;
+  startScreen.style.display='none';gameOverScreen.style.display='none';hud.style.display='flex';scoreDisplay.textContent='സ്കോർ: 0';milestoneEl.classList.remove('show');
+  if(bgElements.length===0)initBackground();
+  lastTime=performance.now();
+  if(animFrameId)cancelAnimationFrame(animFrameId);
+  animFrameId=requestAnimationFrame(gameLoop);
+}
+
+function gameOver(){
+  if(gameState!==STATE.PLAYING)return;
+  gameState=STATE.GAME_OVER;hamse.expression='scared';shakeTimer=500;shakeIntensity=15;spawnCrashParticles(hamse.x+hamse.w/2,hamse.y+hamse.h/2);
+  // No crash beep. Speak the actual Malayalam sentence.
+  speakMalayalam('ഹംസേ വീണു!');
+  setTimeout(function(){
+    if(gameState===STATE.GAME_OVER){
+      const funny=crashLines_pool[Math.floor(Math.random()*crashLines_pool.length)];
+      speakMalayalam(funny);
+    }
+  },1100);
+  setTimeout(function(){finalScoreEl.textContent='സ്കോർ: '+score;gameOverScreen.style.display='flex';hud.style.display='none';},800);
+}
+
+function showMilestone(text){milestoneEl.textContent=text;milestoneEl.classList.add('show');milestoneTimer=2500;/* Keep milestone speech off the jump/crash channel. */}
+
+/* ================= UPDATE ================= */
+function update(dt){
+  gameTime+=dt;
+  gameSpeed=baseSpeed+Math.min(score*.15,8);
+
+  if(!hamse.onGround){
+    hamse.vy+=GRAVITY;hamse.y+=hamse.vy;
+    if(hamse.y>=GROUND_Y-hamse.h){hamse.y=GROUND_Y-hamse.h;hamse.vy=0;hamse.onGround=true;hamse.expression='normal';spawnDust(hamse.x+hamse.w/2,GROUND_Y);}
+  }
+  hamse.runFrame+=1;groundOffset=(groundOffset+gameSpeed)%40;bgOffset+=gameSpeed*.5;farBgOffset+=gameSpeed*.2;
+
+  for(const c of clouds){c.x-=c.speed;if(c.x+c.size*2<0){c.x=W+c.size;c.y=30+Math.random()*(H*.25);}}
+  for(const el of bgElements){el.x-=gameSpeed*.5;if(el.x<-100){el.x=W+50+Math.random()*200;const r=Math.random();el.type=r<.5?'tree':(r<.8?'house':'auto');el.scale=.7+Math.random()*.6;}}
+
+  lastObstacleTime+=dt;
+  if(lastObstacleTime>=nextObstacleDelay){spawnObstacle();lastObstacleTime=0;nextObstacleDelay=1200+Math.random()*1000-Math.min(score*10,400);nextObstacleDelay=Math.max(nextObstacleDelay,700);}
+
+  for(let i=obstacles.length-1;i>=0;i--){
+    const obs=obstacles[i];obs.x-=gameSpeed;
+    if(!obs.passed&&obs.x+obs.w<hamse.x){
+      obs.passed=true;score++;scoreDisplay.textContent='സ്കോർ: '+score;
+      if(milestones[score]&&score>lastMilestone){lastMilestone=score;showMilestone(milestones[score]);}
+    }
+    if(obs.x+obs.w<-50)obstacles.splice(i,1);
+  }
+
+  if(checkCollision()){gameOver();return;}
+  updateParticles(dt);updateReactions();
+
+  if(milestoneTimer>0){milestoneTimer-=dt;if(milestoneTimer<=0)milestoneEl.classList.remove('show');}
+  if(shakeTimer>0)shakeTimer-=dt;
+}
+
+/* ================= RENDER ================= */
+function render(){
+  ctx.save();
+  if(shakeTimer>0){const s=shakeIntensity*(shakeTimer/500);ctx.translate((Math.random()-.5)*s,(Math.random()-.5)*s);}
+  drawSky();drawClouds();drawFarHills();drawBackgroundElements();drawGround();
+  for(const obs of obstacles)drawObstacle(obs);
+  drawHamse();drawParticles();drawReactions();ctx.restore();
+}
+function gameLoop(timestamp){
+  const dt=Math.min(timestamp-lastTime,50);lastTime=timestamp;
+  if(gameState===STATE.PLAYING)update(dt);else if(gameState===STATE.GAME_OVER){updateParticles(dt);updateReactions();if(shakeTimer>0)shakeTimer-=dt;}
+  render();animFrameId=requestAnimationFrame(gameLoop);
+}
+function idleLoop(timestamp){
+  if(gameState!==STATE.START)return;
+  const dt=Math.min(timestamp-lastTime,50);lastTime=timestamp;gameTime+=dt;groundOffset=(groundOffset+2)%40;bgOffset+=1;farBgOffset+=.4;
+  for(const c of clouds){c.x-=c.speed*.5;if(c.x+c.size*2<0)c.x=W+c.size;}
+  for(const el of bgElements){el.x-=1;if(el.x<-100)el.x=W+50+Math.random()*200;}
+  hamse.runFrame+=.5;hamse.y=GROUND_Y-hamse.h;render();requestAnimationFrame(idleLoop);
+}
+function init(){
+  resize();initBackground();hamse.y=GROUND_Y-hamse.h;hamse.expression='normal';lastTime=performance.now();requestAnimationFrame(idleLoop);
+}
+document.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+document.addEventListener('gesturestart',e=>e.preventDefault());
+init();
+
+})();
+</script>
+</body>
+</html>
